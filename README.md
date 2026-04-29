@@ -1,2 +1,7 @@
-# sage
-🌿 Ask your system anything in plain English. AI-powered CLI for Linux &amp; macOS.
+# sage 🌿
+
+Ask your system anything in plain English.
+
+> sage "what's eating my memory"
+
+Work in progress. Stay tuned.
