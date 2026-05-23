@@ -17,7 +17,7 @@ func showWelcome() {
 	fmt.Println()
 	fmt.Println(
 		headerStyle.Render("🌿 sage") +
-			lipgloss.NewStyle().Foreground(colorMuted).Render("  ·  ask your system anything"),
+			lipgloss.NewStyle().Foreground(colorMuted).Render("  "+Version+"  ·  ask your system anything"),
 	)
 	fmt.Println()
 
@@ -40,6 +40,7 @@ func showWelcome() {
 		{"sage <question>", "ask anything"},
 		{"sage config", "show current settings"},
 		{"sage config --model <name>", "switch AI model"},
+		{"sage history", "browse past questions"},
 		{"sage test <question>", "check answer consistency"},
 		{"sage --grade <question>", "grade answer accuracy"},
 	}
