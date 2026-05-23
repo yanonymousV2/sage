@@ -23,8 +23,8 @@ func Run(command string) CommandResult {
 		}
 	}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
-
+	cmd := exec.Command("sh", "-c", command)
+	
 	output, err := cmd.CombinedOutput()
 
 	result := CommandResult{
