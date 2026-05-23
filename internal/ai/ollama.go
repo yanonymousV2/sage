@@ -9,9 +9,10 @@ import (
 )
 
 type OllamaRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
+	Model       string  `json:"model"`
+	Prompt      string  `json:"prompt"`
+	Stream      bool    `json:"stream"`
+	Temperature float64 `json:"temperature"`
 }
 
 type OllamaResponse struct {
@@ -19,12 +20,15 @@ type OllamaResponse struct {
 }
 
 func AskOllama(model string, prompt string) (string, error) {
-
 	reqBody, err := json.Marshal(OllamaRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
+		Model:       model,
+		Prompt:      prompt,
+		Stream:      false,
+		Temperature: 0,
 	})
+	if err != nil {
+		return "", fmt.Errorf("could not build request: %w", err)
+	}
 
 	resp, err := http.Post(
 		"http://localhost:11434/api/generate",

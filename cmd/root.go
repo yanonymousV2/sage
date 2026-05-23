@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -18,6 +19,14 @@ Usage:
   sage "what's eating my memory"
   sage "why is my disk full"
   sage "what's running on port 3000"`,
+	Args: cobra.ArbitraryArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 0 {
+			cmd.Help()
+			return
+		}
+		runAsk(strings.Join(args, " "))
+	},
 }
 
 func Execute() {
@@ -25,4 +34,8 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().BoolVarP(&gradeFlag, "grade", "g", false, "Grade answer accuracy after the response")
 }

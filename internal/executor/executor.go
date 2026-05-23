@@ -2,7 +2,6 @@ package executor
 
 import (
 	"os/exec"
-	"strings"
 )
 
 type CommandResult struct {
@@ -12,15 +11,8 @@ type CommandResult struct {
 }
 
 func Run(command string) CommandResult {
-
-	parts := strings.Fields(command)
-
-	if len(parts) == 0 {
-		return CommandResult{
-			Command: command,
-			Output:  "",
-			Error:   "empty command",
-		}
+	if command == "" {
+		return CommandResult{Command: command, Error: "empty command"}
 	}
 
 	cmd := exec.Command("sh", "-c", command)
