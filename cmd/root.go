@@ -38,4 +38,5 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&gradeFlag, "grade", "g", false, "Grade answer accuracy after the response")
+	rootCmd.Flags().StringVarP(&modelOverrideFlag, "model", "m", "", "Override model for this query (e.g. llama3.2)")
 }

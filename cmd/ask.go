@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -53,14 +52,13 @@ var (
 
 	errorStyle = lipgloss.NewStyle().
 			Foreground(colorRed).PaddingLeft(2)
-
-	boxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPurple).
-			PaddingLeft(3).PaddingRight(3).
-			PaddingTop(1).PaddingBottom(1).
-			MarginLeft(2)
 )
+
+var modelOverrideFlag string
+
+// badJSONEscape matches backslashes followed by characters that are not valid
+// JSON escape sequences. Shell commands like `find -exec ... \;` produce these.
+var badJSONEscape = regexp.MustCompile(`\\([^"\\\/bfnrtu])`)
 
 // --- helpers ---
 
@@ -110,51 +108,106 @@ func wordWrap(text string, width int) string {
 	return strings.Join(out, "\n")
 }
 
-// badJSONEscape matches backslashes followed by characters that are not valid
-// JSON escape sequences. Shell commands like `find -exec ... \;` produce these.
-var badJSONEscape = regexp.MustCompile(`\\([^"\\\/bfnrtu])`)
+// streamWriter prints tokens to the terminal with word-wrapping and indentation.
+type streamWriter struct {
+	width   int
+	indent  string
+	lineLen int
+}
+
+func (sw *streamWriter) write(token string) {
+	for _, r := range token {
+		switch r {
+		case '\n':
+			fmt.Println()
+			fmt.Print(sw.indent)
+			sw.lineLen = 0
+		case ' ':
+			if sw.lineLen > 0 && sw.lineLen >= sw.width {
+				fmt.Println()
+				fmt.Print(sw.indent)
+				sw.lineLen = 0
+			} else {
+				fmt.Print(" ")
+				sw.lineLen++
+			}
+		default:
+			fmt.Printf("%c", r)
+			sw.lineLen += lipgloss.Width(string(r))
+		}
+	}
+}
+
+// resolveOS maps raw uname output to a human-readable OS name the model understands.
+func resolveOS(uname string) string {
+	switch uname {
+	case "Darwin":
+		return "macOS"
+	case "Linux":
+		return "Linux"
+	default:
+		return uname
+	}
+}
 
 // --- logic ---
 
-type CommandPlan struct {
-	Commands []string `json:"commands"`
+func osToolHint(osName string) string {
+	switch osName {
+	case "macOS":
+		return "Use macOS commands: vm_stat, top -l 1 -s 0, sysctl, sw_vers, system_profiler, lsof, netstat, launchctl, brew. Do NOT use Linux-only commands (free, vmstat, /proc/*, apt, yum, systemctl)."
+	default:
+		return "Use Linux commands: free, vmstat, /proc/meminfo, lsb_release, systemctl, apt, journalctl."
+	}
 }
 
 func getCommands(question, osName, model string) ([]string, error) {
 	prompt := fmt.Sprintf(`You are a system assistant for %s.
 The user asked: "%s"
 
-Return a JSON object with a list of safe, read-only shell commands to answer this question.
-Rules:
-- Only safe, non-destructive commands
-- No backslashes in commands (avoid find -exec, use xargs instead)
-- Maximum 5 commands
-- Return only raw JSON, no markdown, no explanation
+%s
 
-Example: {"commands": ["df -h /", "ps aux | grep postgres"]}`, osName, question)
+List up to 5 safe, read-only shell commands to answer this question.
+Output ONLY the commands, one per line, nothing else.
+No explanations, no numbers, no bullets, no JSON, no markdown.
+
+Example output:
+df -h /
+ps aux | grep postgres
+lsof -i :3000`, osName, question, osToolHint(osName))
 
 	response, err := ai.AskOllama(model, prompt)
 	if err != nil {
 		return nil, err
 	}
 
-	start := strings.Index(response, "{")
-	end := strings.LastIndex(response, "}")
-	if start == -1 || end == -1 {
-		return nil, fmt.Errorf("could not parse commands from response")
+	var commands []string
+	for line := range strings.SplitSeq(strings.TrimSpace(response), "\n") {
+		line = strings.TrimSpace(line)
+		// skip blank lines and markdown fences
+		if line == "" || line == "```" || strings.HasPrefix(line, "```") {
+			continue
+		}
+		// strip leading markdown list markers (-, *, •, 1., 2. …)
+		line = strings.TrimLeft(line, "-*•0123456789. \t")
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		commands = append(commands, line)
+		if len(commands) >= 5 {
+			break
+		}
 	}
 
-	jsonStr := badJSONEscape.ReplaceAllString(response[start:end+1], `$1`)
-
-	var plan CommandPlan
-	if err := json.Unmarshal([]byte(jsonStr), &plan); err != nil {
-		return nil, fmt.Errorf("could not parse command plan: %w", err)
+	if len(commands) == 0 {
+		return nil, fmt.Errorf("no commands returned from model")
 	}
 
-	return plan.Commands, nil
+	return commands, nil
 }
 
-func explainResults(question string, results []executor.CommandResult, osName, model string) (string, error) {
+func buildExplainPrompt(question string, results []executor.CommandResult, osName string) string {
 	var sb strings.Builder
 	for _, r := range results {
 		if r.Error != "" {
@@ -164,7 +217,7 @@ func explainResults(question string, results []executor.CommandResult, osName, m
 		}
 	}
 
-	prompt := fmt.Sprintf(`You are sage, a system assistant for %s.
+	return fmt.Sprintf(`You are sage, a system assistant for %s.
 
 The user asked: "%s"
 
@@ -177,21 +230,28 @@ Rules:
 - Follow with short bullet points for the key facts and numbers
 - If something needs a fix, add one short suggestion at the end
 - No markdown, no backticks, respond in the same language as the question`, osName, question, sb.String())
-
-	return ai.AskOllama(model, prompt)
 }
 
 func runAsk(question string) {
 	cfg := config.Load()
+	model := cfg.Model
+	if modelOverrideFlag != "" {
+		model = modelOverrideFlag
+	}
+
 	osInfo := executor.Run("uname -s")
-	osName := strings.TrimSpace(osInfo.Output)
+	osName := resolveOS(strings.TrimSpace(osInfo.Output))
+
+	tw := getTermWidth()
+	contentWidth := max(tw-6, 40)
+	indent := "  "
 
 	fmt.Println()
 	fmt.Println(headerStyle.Render("🌿 sage"))
 	fmt.Println()
 	fmt.Println(stepStyle.Render("● figuring out what to check..."))
 
-	commands, err := getCommands(question, osName, cfg.Model)
+	commands, err := getCommands(question, osName, model)
 	if err != nil {
 		fmt.Println(errorStyle.Render("❌ " + err.Error()))
 		return
@@ -213,32 +273,34 @@ func runAsk(question string) {
 
 	fmt.Println()
 	fmt.Println(stepStyle.Render("● analyzing..."))
+	fmt.Println()
 
-	response, err := explainResults(question, results, osName, cfg.Model)
+	// Show question header before streaming starts
+	fmt.Println(lipgloss.NewStyle().Foreground(colorMuted).PaddingLeft(2).Render("you asked"))
+	fmt.Println(lipgloss.NewStyle().Foreground(colorPurple).Bold(true).PaddingLeft(2).Render(wordWrap(question, contentWidth)))
+	fmt.Println()
+
+	// Stream the response live
+	sw := &streamWriter{width: contentWidth, indent: indent, lineLen: 0}
+	fmt.Print(indent)
+
+	prompt := buildExplainPrompt(question, results, osName)
+	response, err := ai.AskOllamaStream(model, prompt, func(token string) {
+		sw.write(token)
+	})
+	fmt.Println()
+	fmt.Println()
+
 	if err != nil {
 		fmt.Println(errorStyle.Render("❌ " + err.Error()))
 		return
 	}
 
-	response = strings.ReplaceAll(response, "```", "")
-	response = strings.TrimSpace(response)
-
-	// Fit box to terminal: margin(2) + border(2) + padding(6) + right buffer(2) = 12
-	tw := getTermWidth()
-	contentWidth := tw - 12
-	contentWidth = max(contentWidth, 40)
-
-	qLabel := lipgloss.NewStyle().Foreground(colorMuted).Render("you asked")
-	qText := lipgloss.NewStyle().Foreground(colorPurple).Bold(true).Render(wordWrap(question, contentWidth))
-	body := qLabel + "\n" + qText + "\n\n" + wordWrap(response, contentWidth)
-
-	fmt.Println()
-	fmt.Println(boxStyle.Width(contentWidth).Render(body))
-	fmt.Println()
+	response = strings.TrimSpace(strings.ReplaceAll(response, "```", ""))
 
 	if gradeFlag {
 		fmt.Println(stepStyle.Render("● grading answer..."))
-		grade, err := gradeAnswer(question, results, response, osName, cfg.Model)
+		grade, err := gradeAnswer(question, results, response, osName, model)
 		if err != nil {
 			fmt.Println(errorStyle.Render("  (grade failed: " + err.Error() + ")"))
 		} else {
@@ -257,5 +319,6 @@ var askCmd = &cobra.Command{
 }
 
 func init() {
+	askCmd.Flags().StringVarP(&modelOverrideFlag, "model", "m", "", "Override model for this query (e.g. llama3.2)")
 	rootCmd.AddCommand(askCmd)
 }
