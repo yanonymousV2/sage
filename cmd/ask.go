@@ -229,7 +229,9 @@ Rules:
 - Start with one clear sentence summarising the situation
 - Follow with short bullet points for the key facts and numbers
 - If something needs a fix, add one short suggestion at the end
-- No markdown, no backticks, respond in the same language as the question`, osName, question, sb.String())
+- Plain text only — no markdown, no bold (**), no italics (_), no backticks, no bullet symbols like •
+- Use a simple dash - for bullet points
+- Respond in the same language as the question`, osName, question, sb.String())
 }
 
 func runAsk(question string) {

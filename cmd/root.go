@@ -22,7 +22,7 @@ Usage:
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			cmd.Help()
+			showWelcome()
 			return
 		}
 		runAsk(strings.Join(args, " "))
