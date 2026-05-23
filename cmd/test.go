@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"github.com/yanonymousV2/sage/internal/ai"
 	"github.com/yanonymousV2/sage/internal/config"
 	"github.com/yanonymousV2/sage/internal/executor"
 )
@@ -25,6 +26,12 @@ var testCmd = &cobra.Command{
 			model = modelOverrideFlag
 		}
 
+		backend, err := ai.New(cfg.Provider, cfg.APIKey)
+		if err != nil {
+			fmt.Println(errorStyle.Render("❌ " + err.Error()))
+			return
+		}
+
 		osInfo := executor.Run("uname -s")
 		osName := resolveOS(strings.TrimSpace(osInfo.Output))
 
@@ -40,7 +47,7 @@ var testCmd = &cobra.Command{
 		runs := make([][]string, testRuns)
 		for i := range testRuns {
 			fmt.Print(stepStyle.Render(fmt.Sprintf("● run %d  ", i+1)))
-			cmds, err := getCommands(question, osName, model)
+			cmds, err := getCommands(question, osName, model, backend)
 			if err != nil {
 				fmt.Println(errorStyle.Render("failed: " + err.Error()))
 				return

@@ -29,7 +29,7 @@ type OllamaResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
-func friendlyError(model, msg string) error {
+func ollamaFriendlyError(model, msg string) error {
 	lower := strings.ToLower(msg)
 	if strings.Contains(lower, "not found") || strings.Contains(lower, "unknown model") {
 		return fmt.Errorf("model %q is not pulled — run: ollama pull %s", model, model)
@@ -37,9 +37,10 @@ func friendlyError(model, msg string) error {
 	return fmt.Errorf("ollama: %s", msg)
 }
 
-// AskOllama makes a blocking request and returns the full response.
-// Used for structured calls (command planning, grading) that need complete output.
-func AskOllama(model, prompt string) (string, error) {
+// OllamaBackend implements Backend for a local Ollama instance.
+type OllamaBackend struct{}
+
+func (b *OllamaBackend) Complete(model, prompt string) (string, error) {
 	reqBody, err := json.Marshal(OllamaRequest{
 		Model:       model,
 		Prompt:      prompt,
@@ -63,15 +64,13 @@ func AskOllama(model, prompt string) (string, error) {
 		return "", fmt.Errorf("could not decode Ollama response")
 	}
 	if ollamaResp.Error != "" {
-		return "", friendlyError(model, ollamaResp.Error)
+		return "", ollamaFriendlyError(model, ollamaResp.Error)
 	}
 
 	return ollamaResp.Response, nil
 }
 
-// AskOllamaStream streams tokens via onToken as they arrive and returns the full accumulated response.
-// Used for the explanation call so output appears live in the terminal.
-func AskOllamaStream(model, prompt string, onToken func(string)) (string, error) {
+func (b *OllamaBackend) Stream(model, prompt string, onToken func(string)) (string, error) {
 	reqBody, err := json.Marshal(OllamaRequest{
 		Model:       model,
 		Prompt:      prompt,
@@ -96,7 +95,7 @@ func AskOllamaStream(model, prompt string, onToken func(string)) (string, error)
 
 	var full strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB — default 64KB too small for 14b model
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -106,7 +105,7 @@ func AskOllamaStream(model, prompt string, onToken func(string)) (string, error)
 			continue
 		}
 		if chunk.Error != "" {
-			return full.String(), friendlyError(model, chunk.Error)
+			return full.String(), ollamaFriendlyError(model, chunk.Error)
 		}
 		if chunk.Response != "" {
 			if onToken != nil {

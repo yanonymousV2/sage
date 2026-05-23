@@ -12,6 +12,7 @@ import (
 	"github.com/yanonymousV2/sage/internal/ai"
 	"github.com/yanonymousV2/sage/internal/config"
 	"github.com/yanonymousV2/sage/internal/executor"
+	"github.com/yanonymousV2/sage/internal/history"
 )
 
 // --- theme ---
@@ -161,7 +162,7 @@ func osToolHint(osName string) string {
 	}
 }
 
-func getCommands(question, osName, model string) ([]string, error) {
+func getCommands(question, osName, model string, backend ai.Backend) ([]string, error) {
 	prompt := fmt.Sprintf(`You are a system assistant for %s.
 The user asked: "%s"
 
@@ -176,7 +177,7 @@ df -h /
 ps aux | grep postgres
 lsof -i :3000`, osName, question, osToolHint(osName))
 
-	response, err := ai.AskOllama(model, prompt)
+	response, err := backend.Complete(model, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -241,6 +242,12 @@ func runAsk(question string) {
 		model = modelOverrideFlag
 	}
 
+	backend, err := ai.New(cfg.Provider, cfg.APIKey)
+	if err != nil {
+		fmt.Println(errorStyle.Render("❌ " + err.Error()))
+		return
+	}
+
 	osInfo := executor.Run("uname -s")
 	osName := resolveOS(strings.TrimSpace(osInfo.Output))
 
@@ -253,7 +260,7 @@ func runAsk(question string) {
 	fmt.Println()
 	fmt.Println(stepStyle.Render("● figuring out what to check..."))
 
-	commands, err := getCommands(question, osName, model)
+	commands, err := getCommands(question, osName, model, backend)
 	if err != nil {
 		fmt.Println(errorStyle.Render("❌ " + err.Error()))
 		return
@@ -287,7 +294,7 @@ func runAsk(question string) {
 	fmt.Print(indent)
 
 	prompt := buildExplainPrompt(question, results, osName)
-	response, err := ai.AskOllamaStream(model, prompt, func(token string) {
+	response, err := backend.Stream(model, prompt, func(token string) {
 		sw.write(token)
 	})
 	fmt.Println()
@@ -302,13 +309,21 @@ func runAsk(question string) {
 
 	if gradeFlag {
 		fmt.Println(stepStyle.Render("● grading answer..."))
-		grade, err := gradeAnswer(question, results, response, osName, model)
+		grade, err := gradeAnswer(question, results, response, osName, model, backend)
 		if err != nil {
 			fmt.Println(errorStyle.Render("  (grade failed: " + err.Error() + ")"))
 		} else {
 			renderGrade(grade)
 		}
 	}
+
+	_ = history.Append(history.Entry{
+		Question: question,
+		Answer:   response,
+		Provider: cfg.Provider,
+		Model:    model,
+		OS:       osName,
+	})
 }
 
 var askCmd = &cobra.Command{

@@ -17,7 +17,7 @@ type Grade struct {
 	Issues     []string `json:"issues"`
 }
 
-func gradeAnswer(question string, results []executor.CommandResult, answer, osName, model string) (*Grade, error) {
+func gradeAnswer(question string, results []executor.CommandResult, answer, osName, model string, backend ai.Backend) (*Grade, error) {
 	var sb strings.Builder
 	for _, r := range results {
 		output := strings.TrimSpace(r.Output)
@@ -53,7 +53,7 @@ Confidence:
 
 Use an empty issues array when there are no problems.`, osName, question, sb.String(), answer)
 
-	response, err := ai.AskOllama(model, prompt)
+	response, err := backend.Complete(model, prompt)
 	if err != nil {
 		return nil, err
 	}
