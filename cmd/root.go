@@ -12,8 +12,9 @@ import (
 var Version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:   "sage",
-	Short: "🌿 Ask your system anything in plain English",
+	Use:     "sage",
+	Short:   "🌿 Ask your system anything in plain English",
+	Version: Version,
 	Long: `
 🌿 sage — Ask your system anything in plain English.
 AI-powered system assistant for Linux & macOS.

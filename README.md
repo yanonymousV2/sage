@@ -1,4 +1,6 @@
-# sage 🌿
+<p align="center">
+  <img src="sage-banner.png" alt="sage" width="100%" />
+</p>
 
 > Ask your system anything in plain English.
 
