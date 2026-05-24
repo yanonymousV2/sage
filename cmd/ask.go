@@ -11,6 +11,7 @@ import (
 	xterm "github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 	"github.com/yanonymousV2/sage/internal/ai"
+	sagecontext "github.com/yanonymousV2/sage/internal/context"
 	"github.com/yanonymousV2/sage/internal/config"
 	"github.com/yanonymousV2/sage/internal/executor"
 	"github.com/yanonymousV2/sage/internal/history"
@@ -57,6 +58,7 @@ var (
 )
 
 var modelOverrideFlag string
+var followUpFlag bool
 
 // badJSONEscape matches backslashes followed by characters that are not valid
 // JSON escape sequences. Shell commands like `find -exec ... \;` produce these.
@@ -310,7 +312,11 @@ func runAsk(question string) {
 	fmt.Println()
 
 	// Show question header before streaming starts
-	fmt.Println(lipgloss.NewStyle().Foreground(colorMuted).PaddingLeft(2).Render("you asked"))
+	label := "you asked"
+	if priorSession != nil {
+		label = "follow-up"
+	}
+	fmt.Println(lipgloss.NewStyle().Foreground(colorMuted).PaddingLeft(2).Render(label))
 	fmt.Println(lipgloss.NewStyle().Foreground(colorPurple).Bold(true).PaddingLeft(2).Render(wordWrap(question, contentWidth)))
 	fmt.Println()
 
@@ -349,6 +355,11 @@ func runAsk(question string) {
 		Model:    model,
 		OS:       osName,
 	})
+	_ = sagecontext.Save(sagecontext.Session{
+		Question: question,
+		Answer:   response,
+		OS:       osName,
+	})
 }
 
 var askCmd = &cobra.Command{
@@ -362,5 +373,6 @@ var askCmd = &cobra.Command{
 
 func init() {
 	askCmd.Flags().StringVarP(&modelOverrideFlag, "model", "m", "", "Override model for this query (e.g. llama3.2)")
+	askCmd.Flags().BoolVarP(&followUpFlag, "follow-up", "f", false, "Include previous Q&A as context")
 	rootCmd.AddCommand(askCmd)
 }
