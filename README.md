@@ -79,6 +79,9 @@ sage ask "how do I fix that" --follow-up   # explicit
 # fix a problem
 sage fix "my disk is full"                 # diagnose + suggest + apply fix
 
+# full health report
+sage diagnose                              # system, CPU, memory, disk, network
+
 # monitor over time
 sage watch "is my CPU spiking"             # polls every 30s
 sage watch "is postgres running" -i 10     # custom interval

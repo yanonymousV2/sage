@@ -39,6 +39,7 @@ func showWelcome() {
 	rows := [][2]string{
 		{"sage <question>", "ask anything about your system"},
 		{"sage fix <problem>", "diagnose and apply a fix"},
+		{"sage diagnose", "full system health report"},
 		{"sage watch <question>", "monitor and alert on change"},
 		{"sage history", "browse past questions"},
 		{"sage config", "show or update settings"},

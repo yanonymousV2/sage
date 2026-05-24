@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	xterm "github.com/charmbracelet/x/term"
@@ -339,9 +340,11 @@ func runAsk(question string) {
 	fmt.Print(indent)
 
 	prompt := buildExplainPrompt(question, results, osName, pipeData, priorSession)
+	start := time.Now()
 	response, err := backend.Stream(model, prompt, func(token string) {
 		sw.write(token)
 	})
+	elapsed := time.Since(start)
 	fmt.Println()
 	fmt.Println()
 
@@ -351,6 +354,13 @@ func runAsk(question string) {
 	}
 
 	response = strings.TrimSpace(strings.ReplaceAll(response, "```", ""))
+
+	// Show response time + approximate token count
+	approxTokens := len(strings.Fields(response))
+	fmt.Println(lipgloss.NewStyle().Foreground(colorMuted).PaddingLeft(2).Render(
+		fmt.Sprintf("%.1fs · ~%d tokens · %s", elapsed.Seconds(), approxTokens, model),
+	))
+	fmt.Println()
 
 	if gradeFlag {
 		fmt.Println(stepStyle.Render("● grading answer..."))
