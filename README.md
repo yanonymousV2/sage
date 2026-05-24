@@ -66,17 +66,43 @@ curl -fsSL https://raw.githubusercontent.com/yanonymousV2/sage/main/uninstall.sh
 ## Usage
 
 ```sh
-sage "question"            # ask anything about your system
-sage ask "question"        # same thing, explicit subcommand
-sage history               # browse past questions
-sage history --last        # show full last answer
-sage history --search "pg" # search past answers
-sage config                # show current settings
+# ask anything
+sage "why is my disk full"
+sage "what's using port 3000"
+cat error.log | sage "what's wrong here"   # pipe data in
+
+# follow-up questions
+sage "is postgres running"
+sage "why is it slow"                      # auto-detected as follow-up
+sage ask "how do I fix that" --follow-up   # explicit
+
+# fix a problem
+sage fix "my disk is full"                 # diagnose + suggest + apply fix
+
+# monitor over time
+sage watch "is my CPU spiking"             # polls every 30s
+sage watch "is postgres running" -i 10     # custom interval
+
+# history
+sage history                               # list past questions
+sage history --last                        # show full last answer
+sage history --search "postgres"           # search by keyword
+sage history --clear                       # clear all history
+
+# config
+sage config                                # show current settings
+sage config --provider ollama              # switch provider
 sage config --provider claude --api-key sk-ant-...
-sage config --model gpt-4o
-sage config --reset        # back to defaults
-sage test "question"       # run 3x, check consistency
-sage --grade "question"    # grade answer accuracy after response
+sage config --provider openai --api-key sk-...
+sage config --model gpt-4o                 # switch model
+sage config --list-models                  # list local Ollama models
+sage config --reset                        # reset to defaults
+
+# other
+sage update                                # update to latest release
+sage --version                             # show version
+sage test "question"                       # run 3x, check consistency
+sage --grade "question"                    # grade answer accuracy
 ```
 
 ---
@@ -139,14 +165,19 @@ sage/
 ├── main.go
 ├── cmd/
 │   ├── ask.go        # core flow — command planning + explanation
-│   ├── config.go     # sage config command
-│   ├── history.go    # sage history command
+│   ├── fix.go        # diagnose + suggest + apply fix
+│   ├── watch.go      # continuous monitoring
+│   ├── update.go     # self-update from GitHub releases
+│   ├── history.go    # browse past Q&A
+│   ├── config.go     # settings management
 │   ├── grade.go      # answer accuracy grading
 │   ├── test.go       # consistency testing
+│   ├── completion.go # shell completions
 │   └── welcome.go    # default screen
 └── internal/
     ├── ai/           # Ollama, Claude, OpenAI backends
     ├── config/       # persistent config (~/.sage/config.json)
+    ├── context/      # follow-up session context (~/.sage/context.json)
     ├── executor/     # shell command runner
     ├── history/      # history store (~/.sage/history.json)
     └── safety/       # blocked and dangerous command rules

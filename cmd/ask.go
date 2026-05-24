@@ -11,6 +11,7 @@ import (
 	xterm "github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 	"github.com/yanonymousV2/sage/internal/ai"
+	sagecontext "github.com/yanonymousV2/sage/internal/context"
 	"github.com/yanonymousV2/sage/internal/config"
 	"github.com/yanonymousV2/sage/internal/executor"
 	"github.com/yanonymousV2/sage/internal/history"
@@ -57,6 +58,7 @@ var (
 )
 
 var modelOverrideFlag string
+var followUpFlag bool
 
 // badJSONEscape matches backslashes followed by characters that are not valid
 // JSON escape sequences. Shell commands like `find -exec ... \;` produce these.
@@ -222,7 +224,7 @@ lsof -i :3000`, osName, question, osToolHint(osName))
 	return commands, nil
 }
 
-func buildExplainPrompt(question string, results []executor.CommandResult, osName, pipeData string) string {
+func buildExplainPrompt(question string, results []executor.CommandResult, osName, pipeData string, prior *sagecontext.Session) string {
 	var sb strings.Builder
 	for _, r := range results {
 		if r.Error != "" {
@@ -234,17 +236,25 @@ func buildExplainPrompt(question string, results []executor.CommandResult, osNam
 
 	pipedSection := ""
 	if pipeData != "" {
-		// truncate very large stdin to avoid blowing the context window
 		if len(pipeData) > 4000 {
 			pipeData = pipeData[:4000] + "\n... (truncated)"
 		}
 		pipedSection = fmt.Sprintf("\nThe user also piped in this data:\n%s\n", pipeData)
 	}
 
+	priorSection := ""
+	if prior != nil {
+		ans := prior.Answer
+		if len(ans) > 500 {
+			ans = ans[:500] + "..."
+		}
+		priorSection = fmt.Sprintf("\nFor context, the previous question was: \"%s\"\nAnd the answer was: %s\n", prior.Question, ans)
+	}
+
 	return fmt.Sprintf(`You are sage, a system assistant for %s.
 
 The user asked: "%s"
-%s
+%s%s
 Here are the results from running relevant commands:
 %s
 Answer in plain English using the real data above.
@@ -255,7 +265,7 @@ Rules:
 - If something needs a fix, add one short suggestion at the end
 - Plain text only — no markdown, no bold (**), no italics (_), no backticks, no bullet symbols like •
 - Use a simple dash - for bullet points
-- Respond in the same language as the question`, osName, question, pipedSection, sb.String())
+- Respond in the same language as the question`, osName, question, priorSection, pipedSection, sb.String())
 }
 
 func runAsk(question string) {
@@ -272,6 +282,12 @@ func runAsk(question string) {
 	}
 
 	pipeData := readStdin()
+
+	// Load prior context for follow-up detection
+	var priorSession *sagecontext.Session
+	if followUpFlag || sagecontext.IsFollowUp(question) {
+		priorSession = sagecontext.Load()
+	}
 
 	osInfo := executor.Run("uname -s")
 	osName := resolveOS(strings.TrimSpace(osInfo.Output))
@@ -310,7 +326,11 @@ func runAsk(question string) {
 	fmt.Println()
 
 	// Show question header before streaming starts
-	fmt.Println(lipgloss.NewStyle().Foreground(colorMuted).PaddingLeft(2).Render("you asked"))
+	label := "you asked"
+	if priorSession != nil {
+		label = "follow-up"
+	}
+	fmt.Println(lipgloss.NewStyle().Foreground(colorMuted).PaddingLeft(2).Render(label))
 	fmt.Println(lipgloss.NewStyle().Foreground(colorPurple).Bold(true).PaddingLeft(2).Render(wordWrap(question, contentWidth)))
 	fmt.Println()
 
@@ -318,7 +338,7 @@ func runAsk(question string) {
 	sw := &streamWriter{width: contentWidth, indent: indent, lineLen: 0}
 	fmt.Print(indent)
 
-	prompt := buildExplainPrompt(question, results, osName, pipeData)
+	prompt := buildExplainPrompt(question, results, osName, pipeData, priorSession)
 	response, err := backend.Stream(model, prompt, func(token string) {
 		sw.write(token)
 	})
@@ -349,6 +369,11 @@ func runAsk(question string) {
 		Model:    model,
 		OS:       osName,
 	})
+	_ = sagecontext.Save(sagecontext.Session{
+		Question: question,
+		Answer:   response,
+		OS:       osName,
+	})
 }
 
 var askCmd = &cobra.Command{
@@ -362,5 +387,6 @@ var askCmd = &cobra.Command{
 
 func init() {
 	askCmd.Flags().StringVarP(&modelOverrideFlag, "model", "m", "", "Override model for this query (e.g. llama3.2)")
+	askCmd.Flags().BoolVarP(&followUpFlag, "follow-up", "f", false, "Include previous Q&A as context")
 	rootCmd.AddCommand(askCmd)
 }

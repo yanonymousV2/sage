@@ -1,25 +1,73 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yanonymousV2/sage/internal/config"
 )
 
 var (
-	modelFlag      string
-	providerFlag   string
-	apiKeyFlag     string
-	resetTrustFlag bool
-	resetAllFlag   bool
+	modelFlag       string
+	providerFlag    string
+	apiKeyFlag      string
+	resetTrustFlag  bool
+	resetAllFlag    bool
+	listModelsFlag  bool
 )
+
+func listOllamaModels() {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:11434/api/tags")
+	if err != nil {
+		fmt.Println(errorStyle.Render("❌ could not reach Ollama — is it running? Start with: ollama serve"))
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Models []struct {
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Models) == 0 {
+		fmt.Println(stepStyle.Render("  no models found — pull one with: ollama pull qwen2.5:14b"))
+		return
+	}
+
+	cfg := config.Load()
+	fmt.Println()
+	for _, m := range result.Models {
+		active := "  "
+		style := cmdListStyle
+		if m.Name == cfg.Model {
+			active = "✓ "
+			style = successStyle
+		}
+		sizeMB := m.Size / 1024 / 1024
+		fmt.Println(style.Render(fmt.Sprintf("%s%-30s %d MB", active, m.Name, sizeMB)))
+	}
+	fmt.Println()
+	fmt.Println(stepStyle.Render("  switch model: sage config --model <name>"))
+	fmt.Println()
+}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Show or update sage configuration",
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg := config.Load()
+
+		if listModelsFlag {
+			listOllamaModels()
+			return
+		}
 
 		if resetAllFlag {
 			if err := config.Save(config.Defaults()); err != nil {
@@ -95,5 +143,6 @@ func init() {
 	configCmd.Flags().StringVar(&apiKeyFlag, "api-key", "", "Set API key for Claude or OpenAI")
 	configCmd.Flags().BoolVar(&resetTrustFlag, "reset-trust", false, "Re-enable command approval prompts")
 	configCmd.Flags().BoolVar(&resetAllFlag, "reset", false, "Reset all config to defaults")
+	configCmd.Flags().BoolVar(&listModelsFlag, "list-models", false, "List locally available Ollama models")
 	rootCmd.AddCommand(configCmd)
 }

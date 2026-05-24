@@ -26,8 +26,8 @@ func showWelcome() {
 	for _, e := range []string{
 		`sage "why is my disk full"`,
 		`sage "what's using port 3000"`,
-		`sage "is postgres running"`,
-		`sage "how is my memory looking"`,
+		`sage fix "my docker keeps crashing"`,
+		`sage watch "is my CPU spiking"`,
 	} {
 		fmt.Println(cmdListStyle.Render(e))
 	}
@@ -37,10 +37,13 @@ func showWelcome() {
 	fmt.Println()
 
 	rows := [][2]string{
-		{"sage <question>", "ask anything"},
-		{"sage config", "show current settings"},
-		{"sage config --model <name>", "switch AI model"},
+		{"sage <question>", "ask anything about your system"},
+		{"sage fix <problem>", "diagnose and apply a fix"},
+		{"sage watch <question>", "monitor and alert on change"},
 		{"sage history", "browse past questions"},
+		{"sage config", "show or update settings"},
+		{"sage config --list-models", "list local Ollama models"},
+		{"sage update", "update to latest release"},
 		{"sage test <question>", "check answer consistency"},
 		{"sage --grade <question>", "grade answer accuracy"},
 	}
