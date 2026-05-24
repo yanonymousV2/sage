@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -139,6 +140,19 @@ func (sw *streamWriter) write(token string) {
 	}
 }
 
+// readStdin returns piped stdin content, or "" if stdin is a terminal.
+func readStdin() string {
+	stat, err := os.Stdin.Stat()
+	if err != nil || (stat.Mode()&os.ModeCharDevice) != 0 {
+		return "" // interactive terminal, nothing piped
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 // resolveOS maps raw uname output to a human-readable OS name the model understands.
 func resolveOS(uname string) string {
 	switch uname {
@@ -208,7 +222,7 @@ lsof -i :3000`, osName, question, osToolHint(osName))
 	return commands, nil
 }
 
-func buildExplainPrompt(question string, results []executor.CommandResult, osName string) string {
+func buildExplainPrompt(question string, results []executor.CommandResult, osName, pipeData string) string {
 	var sb strings.Builder
 	for _, r := range results {
 		if r.Error != "" {
@@ -218,10 +232,19 @@ func buildExplainPrompt(question string, results []executor.CommandResult, osNam
 		}
 	}
 
+	pipedSection := ""
+	if pipeData != "" {
+		// truncate very large stdin to avoid blowing the context window
+		if len(pipeData) > 4000 {
+			pipeData = pipeData[:4000] + "\n... (truncated)"
+		}
+		pipedSection = fmt.Sprintf("\nThe user also piped in this data:\n%s\n", pipeData)
+	}
+
 	return fmt.Sprintf(`You are sage, a system assistant for %s.
 
 The user asked: "%s"
-
+%s
 Here are the results from running relevant commands:
 %s
 Answer in plain English using the real data above.
@@ -232,7 +255,7 @@ Rules:
 - If something needs a fix, add one short suggestion at the end
 - Plain text only — no markdown, no bold (**), no italics (_), no backticks, no bullet symbols like •
 - Use a simple dash - for bullet points
-- Respond in the same language as the question`, osName, question, sb.String())
+- Respond in the same language as the question`, osName, question, pipedSection, sb.String())
 }
 
 func runAsk(question string) {
@@ -247,6 +270,8 @@ func runAsk(question string) {
 		fmt.Println(errorStyle.Render("❌ " + err.Error()))
 		return
 	}
+
+	pipeData := readStdin()
 
 	osInfo := executor.Run("uname -s")
 	osName := resolveOS(strings.TrimSpace(osInfo.Output))
@@ -293,7 +318,7 @@ func runAsk(question string) {
 	sw := &streamWriter{width: contentWidth, indent: indent, lineLen: 0}
 	fmt.Print(indent)
 
-	prompt := buildExplainPrompt(question, results, osName)
+	prompt := buildExplainPrompt(question, results, osName, pipeData)
 	response, err := backend.Stream(model, prompt, func(token string) {
 		sw.write(token)
 	})
