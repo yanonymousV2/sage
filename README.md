@@ -11,6 +11,16 @@ sage "is postgres running"
 sage "how is my memory looking"
 ```
 
+![sage demo](demo.gif)
+
+---
+
+## Why sage?
+
+When something goes wrong on your machine, you either Google it and get generic answers, or you dig through commands you half-remember. sage does the digging for you — it figures out which commands to run, runs them, and explains what it found using the actual output from your system.
+
+It's not a chatbot. It's a system assistant that reads your machine directly.
+
 ---
 
 ## How it works
@@ -40,6 +50,13 @@ curl -fsSL https://raw.githubusercontent.com/yanonymousV2/sage/main/install.sh |
 git clone https://github.com/yanonymousV2/sage
 cd sage
 go build -o sage .
+sudo mv sage /usr/local/bin/sage
+```
+
+**Uninstall:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yanonymousV2/sage/main/uninstall.sh | sh
 ```
 
 ---
@@ -97,6 +114,54 @@ sage "how is my system doing"
 ## Safety
 
 sage only runs read-only commands. Before running anything, it shows you exactly what it plans to execute and asks for approval. Destructive commands are blocked entirely.
+
+---
+
+## Contributing
+
+Pull requests are welcome.
+
+**Run locally:**
+
+```sh
+git clone https://github.com/yanonymousV2/sage
+cd sage
+go mod tidy
+go run main.go "how is my system doing"
+```
+
+**Project structure:**
+
+```
+sage/
+├── main.go
+├── cmd/
+│   ├── ask.go        # core flow — command planning + explanation
+│   ├── config.go     # sage config command
+│   ├── history.go    # sage history command
+│   ├── grade.go      # answer accuracy grading
+│   ├── test.go       # consistency testing
+│   └── welcome.go    # default screen
+└── internal/
+    ├── ai/           # Ollama, Claude, OpenAI backends
+    ├── config/       # persistent config (~/.sage/config.json)
+    ├── executor/     # shell command runner
+    ├── history/      # history store (~/.sage/history.json)
+    └── safety/       # blocked and dangerous command rules
+```
+
+**Adding a new backend:**
+
+Implement the `Backend` interface in `internal/ai/`:
+
+```go
+type Backend interface {
+    Complete(model, prompt string) (string, error)
+    Stream(model, prompt string, onToken func(string)) (string, error)
+}
+```
+
+Then register it in `internal/ai/backend.go`.
 
 ---
 
